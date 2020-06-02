@@ -1,3 +1,6 @@
+library(dplyr)
+library(stringr)
+library(ggplot2)
 # Downloading the data
 if(!dir.exists('./Data')){
     dir.create('Data')
@@ -9,6 +12,65 @@ if(!dir.exists('./Data')){
                     'final/en_US/en_US.blogs.txt'))
 }
 
-twitter = readLines('./Data/en_US.twitter.txt')
-news    = readLines('./Data/en_US.news.txt')
-blogs   = readLines('./Data/en_US.blogs.txt')
+# Importing a 'random' sample of the datasets of size 4000
+set.seed(123)
+twitter = readLines('./Data/en_US.twitter.txt')%>%
+    sample(4000)
+news    = readLines('./Data/en_US.news.txt')%>%
+    sample(4000)
+blogs   = readLines('./Data/en_US.blogs.txt')%>%
+    sample(4000)
+
+# Function to split the strings into words
+words = function(.line){
+    # x = str_replace_all(x, '\\W|\\d', ' ')
+    x = tolower(.line)%>%
+        str_split(pattern ='\\s')%>%
+        unlist%>%
+        na_if('')%>%
+        na_if(' ')
+    x[!is.na(x)]
+}
+
+# Funtion to remove profanity words
+profan = function(words){
+    p = readLines('./Data/EnProfanity.txt')
+    words[!(words %in%p)]
+}
+
+# Function to remove punctions
+punc = function(words){
+    words = sapply(words, str_split, pattern = "[:punct:]")%>%
+        unlist%>%
+        na_if('')%>%
+        na_if(' ')
+    words = words[-grep("[[:punct:]]", words)]
+    words[!is.na(words)]
+}
+
+# Testing on twitter dataset
+twitterWords = words(twitter)%>%
+    profan%>%
+    punc
+names(twitterWords) = NULL
+
+# Which words are the most frequent?
+a = as.data.frame(table(twitterWords))
+a = a[order(a$Freq, decreasing = T),]%>%
+    mutate(Freq = Freq/sum(Freq))%>%
+    mutate(CumFreq = cumsum(Freq))
+
+# How many unique words do you need in a frequency sorted dictionary to cover 50%
+# of all word instances in the language? 90%?
+ggplot(a, aes(1:nrow(a), CumFreq))+
+    geom_line(size = 1, color = 'steelblue')
+which.max(a$CumFreq>0.5)
+which.max(a$CumFreq>0.9)
+# Function to form unique pairs (pattern)
+
+
+# Calculate the number of times the pairs appear
+str_count(paste0(twitterWords, collapse = ' '), pattern = "yabadabadooo")
+# Plot it
+
+#
