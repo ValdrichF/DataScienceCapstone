@@ -62,8 +62,9 @@ a = a[order(a$Freq, decreasing = T),]%>%
 
 # How many unique words do you need in a frequency sorted dictionary to cover 50%
 # of all word instances in the language? 90%?
-ggplot(a, aes(1:nrow(a), CumFreq))+
-    geom_line(size = 1, color = 'steelblue')
+ggplot(a)+
+    geom_line(aes(1:nrow(a), CumFreq), size = 1, color = 'steelblue')+
+    geom_line(aes(1:nrow(a), Freq), size= 1, color = 'red')
 which.max(a$CumFreq>0.5)
 which.max(a$CumFreq>0.9)
 # Function to form unique pairs (pattern)
