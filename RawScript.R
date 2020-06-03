@@ -63,15 +63,33 @@ a = a[order(a$Freq, decreasing = T),]%>%
 # How many unique words do you need in a frequency sorted dictionary to cover 50%
 # of all word instances in the language? 90%?
 ggplot(a)+
-    geom_line(aes(1:nrow(a), CumFreq), size = 1, color = 'steelblue')+
-    geom_line(aes(1:nrow(a), Freq), size= 1, color = 'red')
+    geom_line(aes(1:nrow(a), CumFreq*100), size = 1, color = 'steelblue')+
+    labs(x = 'Rank of word by frequency',
+         y = 'Cumulitive Frequency',
+         title = 'Percent words used in the text')
 which.max(a$CumFreq>0.5)
 which.max(a$CumFreq>0.9)
-# Function to form unique pairs (pattern)
 
+# Function to form pairs of words
+bigram = function(words){
+    if (length(words) >= 2){
+        paste(words[-length(words)],words[-1], sep = "_")
+    }else warning("The arguement 'words' must have length > 1")
+}
 
-# Calculate the number of times the pairs appear
-str_count(paste0(twitterWords, collapse = ' '), pattern = "yabadabadooo")
+twitterWordPairs = bigram(twitterWords)
+freq = as.data.frame(table(twitterWordPairs))
+freq = freq[order(freq$Freq, decreasing = T),]%>%
+    mutate(Freq = Freq/sum(Freq))%>%
+    mutate(CumFreq = cumsum(Freq))
+
 # Plot it
+ggplot(freq)+
+    geom_line(aes(1:nrow(freq)/nrow(freq), CumFreq), size = 1, color = 'steelblue')+
+    labs(x = 'Rank of word pairs by frequency',
+         y = 'Cumulitive Frequency',
+         title = 'Percent word pairs used in the text')
+which.max(freq$CumFreq>0.5)
+which.max(freq$CumFreq>0.9)
 
 #
