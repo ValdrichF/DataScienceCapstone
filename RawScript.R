@@ -1,6 +1,7 @@
 library(dplyr)
 library(stringr)
 library(ggplot2)
+library(ngram)
 # Downloading the data
 if(!dir.exists('./Data')){
     dir.create('Data')
@@ -21,9 +22,19 @@ news    = readLines('./Data/en_US.news.txt')%>%
 blogs   = readLines('./Data/en_US.blogs.txt')%>%
     sample(4000)
 
+# Function to remove punctions
+punc = function(Lines){
+    # Remove punctuations except contractions eg. can't
+    str_replace_all(Lines, "(('t)|('ll)|('m)|('re)|('s)|('d)|('ve))|[[:punct:]]", "\\1")
+}
+
+# Remove numbers
+numb = function(Lines){
+    str_replace_all(Lines, '\\d', '')
+}
+
 # Function to split the strings into words
 words = function(.line){
-    # x = str_replace_all(x, '\\W|\\d', ' ')
     x = tolower(.line)%>%
         str_split(pattern ='\\s')%>%
         unlist%>%
@@ -33,26 +44,35 @@ words = function(.line){
 }
 
 # Funtion to remove profanity words
-profan = function(words){
+profan = function(.Words){
+    # text file with English Profanity words from
+    # https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en
     p = readLines('./Data/EnProfanity.txt')
-    words[!(words %in%p)]
+    # Removing Profanity words
+    .Words[-grep(paste('(', p, ')', collapse = '|', sep = ''),
+                 .Words,
+                 ignore.case = T,
+                 perl = T)]
 }
 
-# Function to remove punctions
-punc = function(words){
-    words = sapply(words, str_split, pattern = "[:punct:]")%>%
-        unlist%>%
-        na_if('')%>%
-        na_if(' ')
-    words = words[-grep("[[:punct:]]", words)]
-    words[!is.na(words)]
+# Preprocessing the lines, Run the functions in appropriate order
+Preprocess = function(Lines){
+    Lines%>%
+        punc%>%
+        numb%>%
+        words%>%
+        profan
+
 }
 
 # Testing on twitter dataset
-twitterWords = words(twitter)%>%
-    profan%>%
-    punc
-names(twitterWords) = NULL
+twitterWords = Preprocess(twitter)
+
+twitterWords = punc(twitter)
+twitterWords = numb(twitter)
+twitterWords = words(twitter)
+twitterWords = profan(twitter)
+
 
 # Which words are the most frequent?
 a = as.data.frame(table(twitterWords))
@@ -70,14 +90,23 @@ ggplot(a)+
 which.max(a$CumFreq>0.5)
 which.max(a$CumFreq>0.9)
 
-# Function to form pairs of words
-bigram = function(words){
-    if (length(words) >= 2){
-        paste(words[-length(words)],words[-1], sep = "_")
-    }else warning("The arguement 'words' must have length > 1")
+# Function to form groups of words
+wordGroups = function(words, group = 2){
+    # Groups must be more than 2 words together
+    if (group <2) stop("Cannot make groups of less than two words together")
+    # Cannot make groups of fewer with words less than the group size
+    if (length(words) < group)stop("The arguement 'words' must have length >= 1 group")
+    # Create a matrix with each column containing a word of the group
+    len = length(words)
+    cols = chracter(nrow(len-grp))
+    for (grp in 1:group){
+        cols = cbind(cols, words[grp:(len-group+grp)]) 
+    }
+    # Paste them together returning a vector with the groups in each row
+    apply(cols, 1, paste, collapse = ' ')
 }
 
-twitterWordPairs = bigram(twitterWords)
+twitterWordPairs = wordGroups(twitterWords, 3)
 freq = as.data.frame(table(twitterWordPairs))
 freq = freq[order(freq$Freq, decreasing = T),]%>%
     mutate(Freq = Freq/sum(Freq))%>%
@@ -85,11 +114,23 @@ freq = freq[order(freq$Freq, decreasing = T),]%>%
 
 # Plot it
 ggplot(freq)+
-    geom_line(aes(1:nrow(freq)/nrow(freq), CumFreq), size = 1, color = 'steelblue')+
+    geom_line(aes(1:nrow(freq), CumFreq), size = 1, color = 'steelblue')+
     labs(x = 'Rank of word pairs by frequency',
          y = 'Cumulitive Frequency',
          title = 'Percent word pairs used in the text')
 which.max(freq$CumFreq>0.5)
 which.max(freq$CumFreq>0.9)
 
-#
+# With ngram package
+twitterConcat = concatenate(twitterWords)
+nG = ngram(twitterConcat, n = 3)
+babble(nG, 100, seed = 123)
+
+tic()
+twitterWords = Preprocess(twitter)
+toc()
+
+PreprocessCmp = cmpfun(Preprocess)
+tic()
+twitterWords = PreprocessCmp(twitter)
+toc()
