@@ -15,12 +15,16 @@ if(!dir.exists('./Data')){
 
 # Importing a 'random' sample of the datasets of size 4000
 set.seed(123)
-twitter = readLines('./Data/en_US.twitter.txt')%>%
-    sample(4000)
-news    = readLines('./Data/en_US.news.txt')%>%
-    sample(4000)
-blogs   = readLines('./Data/en_US.blogs.txt')%>%
-    sample(4000)
+twitter = readLines('./Data/en_US.twitter.txt')
+subInt = as.logical(rbinom(twitter,1,prob = 0.001))
+twitter = twitter[subInt]
+news    = readLines('./Data/en_US.news.txt')
+subInt = as.logical(rbinom(news,1,prob = 0.001))
+news = news[subInt]
+blogs   = readLines('./Data/en_US.blogs.txt')
+subInt = as.logical(rbinom(blogs,1,prob = 0.001))
+blogs = blogs[subInt]
+remove(subInt)
 
 # Function to remove punctions
 punc = function(Lines){
@@ -43,16 +47,40 @@ words = function(.line){
     x[!is.na(x)]
 }
 
-# Funtion to remove profanity words
+# text file with English Profanity words from
+# https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en
+profanity = readLines('./Data/EnProfanity.txt')
+profanityWords = profanity[-grep(' ', profanity)]
+
+# Function to remove profane words from vector of words
 profan = function(.Words){
-    # text file with English Profanity words from
-    # https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en
-    p = readLines('./Data/EnProfanity.txt')
-    # Removing Profanity words
-    .Words[-grep(paste('(', p, ')', collapse = '|', sep = ''),
-                 .Words,
-                 ignore.case = T,
-                 perl = T)]
+    # Find index
+    .Words[!(.Words%in%profanityWords)]
+}
+
+# # (Very slow, ineffective, DO NOT USE) Function to remove profane words from lines 
+# # only complete word matches (preceded and followed by a whitespace)
+# pattern = paste0('\\s', profanity, '\\s')
+# 
+# profan = function(.Lines){
+#     # Find index
+#     mapply(function(.Line){
+#         mapply(gsub, pattern = pattern, MoreArgs = list(x = .Line, perl = TRUE, 
+#                                                         useBytes = TRUE,
+#                                                         replacement = ''))
+#     }, .Line = .Lines)%>%
+#         unlist
+# }
+# 
+# Function to remove lines containing profane words
+pattern = paste0('\\s', profanity, '\\s')
+
+profan = function(.Lines){
+    # Find index of lines containing profane words
+    profInd = mapply(grep, pattern = pattern,
+                     MoreArgs = list(x = .Lines, perl = TRUE, useBytes = TRUE))%>%
+        unlist
+    .Lines[-profInd]
 }
 
 # Preprocessing the lines, Run the functions in appropriate order
@@ -60,19 +88,21 @@ Preprocess = function(Lines){
     Lines%>%
         punc%>%
         numb%>%
-        words%>%
-        profan
-
+        profan%>% # Careful of the order
+        words # Careful of the order
 }
 
 # Testing on twitter dataset
-twitterWords = Preprocess(twitter)
-
 twitterWords = punc(twitter)
-twitterWords = numb(twitter)
-twitterWords = words(twitter)
-twitterWords = profan(twitter)
+twitterWords = numb(twitterWords)
+twitterWords = profan(twitterWords)
+twitterWords = words(twitterWords)
+length(twitterWords)
+sum(nchar(twitterWords))
 
+
+
+twitterWords = Preprocess(twitter)
 
 # Which words are the most frequent?
 a = as.data.frame(table(twitterWords))
@@ -98,7 +128,7 @@ wordGroups = function(words, group = 2){
     if (length(words) < group)stop("The arguement 'words' must have length >= 1 group")
     # Create a matrix with each column containing a word of the group
     len = length(words)
-    cols = chracter(nrow(len-grp))
+    cols = character()
     for (grp in 1:group){
         cols = cbind(cols, words[grp:(len-group+grp)]) 
     }
@@ -125,12 +155,3 @@ which.max(freq$CumFreq>0.9)
 twitterConcat = concatenate(twitterWords)
 nG = ngram(twitterConcat, n = 3)
 babble(nG, 100, seed = 123)
-
-tic()
-twitterWords = Preprocess(twitter)
-toc()
-
-PreprocessCmp = cmpfun(Preprocess)
-tic()
-twitterWords = PreprocessCmp(twitter)
-toc()
