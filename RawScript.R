@@ -2,6 +2,7 @@ library(dplyr)
 library(stringr)
 library(ggplot2)
 library(ngram)
+library(ggpubr)
 # Downloading the data
 if(!dir.exists('./Data')){
     dir.create('Data')
@@ -24,12 +25,14 @@ news = news[subInt]
 blogs   = readLines('./Data/en_US.blogs.txt')
 subInt = as.logical(rbinom(blogs,1,prob = 0.001))
 blogs = blogs[subInt]
-remove(subInt)
+rm(subInt)
 
 # Function to remove punctions
 punc = function(Lines){
+    # add a symbol to show new line
+    Lines = str_replace_all(Lines, '\\.|\\!|\\?', ' <n>')
     # Remove punctuations except contractions eg. can't
-    str_replace_all(Lines, "(('t)|('ll)|('m)|('re)|('s)|('d)|('ve))|[[:punct:]]", "\\1")
+    str_replace_all(Lines, "(('t)|('ll)|('m)|('re)|('s)|('d)|('ve)|( <n>))|[[:punct:]]", "\\1")
 }
 
 # Remove numbers
@@ -50,7 +53,9 @@ words = function(.line){
 # text file with English Profanity words from
 # https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en
 profanity = readLines('./Data/EnProfanity.txt')
-profanityWords = profanity[-grep(' ', profanity)]
+profanityWords = profanity[-grep(' ', profanity)]%>%
+    punc%>%
+    numb
 
 # Function to remove profane words from vector of words
 profan = function(.Words){
@@ -72,24 +77,38 @@ profan = function(.Words){
 #         unlist
 # }
 # 
-# Function to remove lines containing profane words
-pattern = paste0('\\s', profanity, '\\s')
+# # Function to remove lines containing profane words
+# pattern = paste0('\\s', profanityWords, '\\s')
+# 
+# profan = function(.Lines){
+#     # Find index of lines containing profane words
+#     profInd = mapply(grep, pattern = pattern,
+#                      MoreArgs = list(x = .Lines, perl = TRUE, useBytes = TRUE))%>%
+#         unlist
+#     .Lines[-profInd]
+# }
 
-profan = function(.Lines){
-    # Find index of lines containing profane words
-    profInd = mapply(grep, pattern = pattern,
-                     MoreArgs = list(x = .Lines, perl = TRUE, useBytes = TRUE))%>%
-        unlist
-    .Lines[-profInd]
+# text file with English Profanity words from
+# https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en
+profanity = readLines('./Data/EnProfanity.txt')
+profanityWords = profanity[-grep(' ', profanity)]%>%
+    punc%>%
+    numb
+
+# Faster function to remove profane words from vector of words
+profan = function(.Words){
+    # Find index
+    .Words[!(.Words%in%profanityWords)]
 }
 
 # Preprocessing the lines, Run the functions in appropriate order
 Preprocess = function(Lines){
     Lines%>%
+        paste0(' <n>')%>%
         punc%>%
         numb%>%
-        profan%>% # Careful of the order
-        words # Careful of the order
+        words%>% # Careful of the order
+        profan # Careful of the order
 }
 
 # Testing on twitter dataset
@@ -103,22 +122,67 @@ sum(nchar(twitterWords))
 
 
 twitterWords = Preprocess(twitter)
+newsWords    = Preprocess(news)
+blogWords    = Preprocess(blogs)
 
 # Which words are the most frequent?
-a = as.data.frame(table(twitterWords))
-a = a[order(a$Freq, decreasing = T),]%>%
+at = as.data.frame(table(twitterWords))
+at = at[order(at$Freq, decreasing = T),]%>%
+    filter(twitterWords != '<n>')%>%
+    mutate(Freq = Freq/sum(Freq))%>%
+    mutate(CumFreq = cumsum(Freq))
+an = as.data.frame(table(newsWords))
+an = an[order(an$Freq, decreasing = T),]%>%
+    filter(newsWords != '<n>')%>%
+    mutate(Freq = Freq/sum(Freq))%>%
+    mutate(CumFreq = cumsum(Freq))
+ab = as.data.frame(table(blogWords))
+ab = ab[order(ab$Freq, decreasing = T),]%>%
+    filter(blogWords != '<n>')%>%
     mutate(Freq = Freq/sum(Freq))%>%
     mutate(CumFreq = cumsum(Freq))
 
 # How many unique words do you need in a frequency sorted dictionary to cover 50%
 # of all word instances in the language? 90%?
-ggplot(a)+
-    geom_line(aes(1:nrow(a), CumFreq*100), size = 1, color = 'steelblue')+
-    labs(x = 'Rank of word by frequency',
-         y = 'Cumulitive Frequency',
-         title = 'Percent words used in the text')
-which.max(a$CumFreq>0.5)
-which.max(a$CumFreq>0.9)
+t = ggplot(at)+
+    geom_line(aes(1:length(twitterWords), CumFreq*100), size = 1, color = 'steelblue')+
+    labs(x = '', y = '', title = '')+
+    theme(axis.title.x=element_blank(), axis.title.y=element_blank())
+n = ggplot(an)+
+    geom_line(aes(1:length(newsWords), CumFreq*100), size = 1, color = 'steelblue')+
+    labs(x = '', y = '', title = '')+
+    theme(axis.title.x=element_blank(), axis.title.y=element_blank())
+b = ggplot(ab)+
+    geom_line(aes(1:length(blogWords), CumFreq*100), size = 1, color = 'steelblue')+
+    labs(x = '', y = '', title = '')+
+    theme(axis.title.x=element_blank(), axis.title.y=element_blank())
+annotate_figure(ggarrange(t, n, b, labels = c('Twitter', 'News', 'Blog'), ncol = 3, nrow = 1),
+                bottom = text_grob('Rank of word by frequency'),
+                left = text_grob('Cumulitive Frequency', rot = 90))
+which.max(at$CumFreq>0.5)
+which.max(at$CumFreq>0.9)
+
+HistT = ggplot(head(at, 20))+
+    geom_bar(aes(x = twitterWords, y = Freq), stat = 'Identity', fill = 'steelblue')+
+    labs(x = '', y = '', title = '')+
+    theme(axis.title.x=element_blank(), axis.title.y=element_blank())+
+    ylim(c(0, 0.06))+
+    scale_x_discrete(limits = at$twitterWords[1:20])
+HistN = ggplot(head(an, 20))+
+    geom_bar(aes(x = newsWords, y = Freq), stat = 'Identity', fill = 'steelblue')+
+    labs(x = '', y = '', title = '')+
+    theme(axis.title.x=element_blank(), axis.title.y=element_blank())+
+    ylim(c(0, 0.06))+
+    scale_x_discrete(limits = an$newsWords[1:20])
+HistB = ggplot(head(ab, 20))+
+    geom_bar(aes(x = blogWords, y = Freq), stat = 'Identity', fill = 'steelblue')+
+    labs(x = '', y = '', title = '')+
+    theme(axis.title.x=element_blank(), axis.title.y=element_blank())+
+    ylim(c(0, 0.06))+
+    scale_x_discrete(limits = ab$blogWords[1:20])
+annotate_figure(ggarrange(HistT, HistN, HistB, labels = c('Twitter', 'News', 'Blog'), ncol = 3, nrow = 1),
+                bottom = text_grob('20 most common words'),
+                left = text_grob('Frequency', rot = 90))
 
 # Function to form groups of words
 wordGroups = function(words, group = 2){
@@ -136,7 +200,7 @@ wordGroups = function(words, group = 2){
     apply(cols, 1, paste, collapse = ' ')
 }
 
-twitterWordPairs = wordGroups(twitterWords, 3)
+twitterWordPairs = wordGroups(twitterWords, 2)
 freq = as.data.frame(table(twitterWordPairs))
 freq = freq[order(freq$Freq, decreasing = T),]%>%
     mutate(Freq = Freq/sum(Freq))%>%
@@ -150,6 +214,32 @@ ggplot(freq)+
          title = 'Percent word pairs used in the text')
 which.max(freq$CumFreq>0.5)
 which.max(freq$CumFreq>0.9)
+
+# funtion to predict the next word based on the 2 previous words
+# consider using lapply and workign with multiple words of the line
+# Have to remove punctuation and spaces
+gram2 = function(w1, w2, dictionary = twitterWords, outsize = 3){
+    w1 = tolower(w1)%>%
+        str_replace_all( "(('t)|('ll)|('m)|('re)|('s)|('d)|('ve))|[[:punct:]]", "\\1")%>%
+        str_replace_all('\\s','')
+    w2 = tolower(w2)%>%
+        str_replace_all( "(('t)|('ll)|('m)|('re)|('s)|('d)|('ve))|[[:punct:]]", "\\1")%>%
+        str_replace_all('\\s','')
+    ind1 = which(dictionary==w1)
+    ind2 = which(dictionary==w2)
+    pred1 = dictionary[ind1+1]
+    pred2 = dictionary[ind2+2]
+    prob1 = table(pred1)
+    prob2 = table(pred2)
+    row.names(prob1[order(prob1, decreasing = T)][1:10])
+}
+
+library(microbenchmark)
+
+microbenchmark(gram2('the', 'in'))
+
+twitterWords[ind1+1]
+
 
 # With ngram package
 twitterConcat = concatenate(twitterWords)
